@@ -1,126 +1,171 @@
 <#
-    Author: David Brook
-    Date: 17/02/2021
+.SYNOPSIS
+  This is a script to Dynamically Detect, Install and Uninstall the Git for Windows Client.
 
-    Purpose: Install and/or detect the Git for Windows using the GitHub API
+  https://gitforwindows.org/
+
+.DESCRIPTION
+  Use this script to detect, install or uninstall the Git for Windows client.
+
+.PARAMETER Arch
+    Select the architecture you would like to install, select from the following
+    - 64-bit (Default)
+    - 32-bit
+    - ARM64
+
+.PARAMETER ExecutionType
+    Select the Execution type, this determines if you will be detecting, installing uninstalling the application.
+    
+    The options are as follows;
+    - Install (Default)
+    - Detect
+    - Uninstall
+
+.Parameter DownloadPath
+    The location you would like the downloaded installer to go. 
+
+    Default: $env:TEMP\GitInstall
+
+.NOTES
+  Version:        1.0
+  Author:         David Brook
+  Creation Date:  21/02/2021
+  Purpose/Change: Initial script development
+  
 #>
 
 param (
     [ValidateSet('64-bit','32-bit','ARM64')]
     [String]$Arch = '64-bit',
     [ValidateSet('Install','Uninstall',"Detect")]
-    [string]$ExecutionType
+    [string]$ExecutionType = "Detect",
+    [string]$DownloadPath = "$env:Temp\GitInstaller\",
+    [string]$GITPAC 
 )
 
-function Get-LatestVersion {
-    [String]$URL = "https://api.github.com/repos/git-for-windows/git/releases/latest"
-    $WebResult = Invoke-RestMethod -Method GET -Uri $URL -ContentType "application/json" 
-    
-    $WebResult.name.split()[-1]
+$TranscriptFile = "$env:SystemRoot\Logs\Software\GitForWindows_Dynamic_Install.Log"
+Start-Transcript -Path $TranscriptFile
 
-}
-
-function Get-DownloadLink {
-    [String]$URL = "https://api.github.com/repos/git-for-windows/git/releases/latest"
-    $WebResult = Invoke-RestMethod -Method GET -Uri $URL -ContentType "application/json" 
-
-    ($WebResult.assets | Where-Object {$_.Name -Match $EXEName}).browser_download_url
-}
-
-function Detect-GitForWindows {
-    IF (((Get-ChildItem -Path $UninstallKey | Get-ItemProperty | Where-Object {$_.DisplayName -like "*Git version*"}).DisplayVersion -Match $LatestVersion) -or ((Get-ChildItem -Path $UninstallKeyWow6432Node | Get-ItemProperty | Where-Object {$_.DisplayName -like "*Git version*"}).DisplayVersion -Match $LatestVersion))
+##############################################################################
+########################## Application Detection #############################
+##############################################################################
+function Detect-Application {
+    IF (((Get-ChildItem -Path $UninstallKey | Get-ItemProperty | Where-Object {$_.DisplayName -like "*$DetectionString*"}).DisplayVersion -Match $LatestVersion) -or ((Get-ChildItem -Path $UninstallKeyWow6432Node | Get-ItemProperty | Where-Object {$_.DisplayName -like "*$DetectionString*"}).DisplayVersion -Match $LatestVersion))
     {
+        Write-Output "$AppName is installed"
         $True
     }
 }
 
-function Install-GitForWindows {
+##############################################################################
+################## Application Installation/Uninstallation ###################
+##############################################################################
+function Install-Application {
+    # If the Download Path does not exist, Then try and crate it. 
     IF (!(Test-Path $DownloadPath)) {
         try {
             Write-Verbose "$DownloadPath Does not exist, Creating the folder"
-            MKDIR $DownloadPath -ErrorAction Stop | Out-Null
+            New-Item -Path $DownloadPath -ItemType Directory -ErrorAction Stop | Out-Null
         } catch {
             Write-Verbose "Failed to create folder $DownloadPath"
         }
     }
-    
+    # Once the folder exists, download the installer
     try {
-        Write-Verbose "Attempting client download"
+        Write-Verbose "Downloading Application Binaries for $AppName"
         Invoke-WebRequest -Usebasicparsing -URI $DownloadLink -Outfile "$DownloadPath\$EXEName" -ErrorAction Stop
     }
     catch {
-        Write-Error "Failed to download RDInstaller"
+        Write-Error "Failed to download application binaries"
     }
-    
+    # Once Downloaded, Install the application
     try {
-        "Installing Git for Windows $($LatestVersion)"
-        Start-Process "$DownloadPath\$EXEName" -ArgumentList "/SP- /VERYSILENT /SUPPRESSMSGBOXES /NORESTART" -Wait
+        "Installing $AppName $($LatestVersion)"
+        Start-Process "$DownloadPath\$EXEName" -ArgumentList $InstallArgs -Wait
     }
     catch {
-        Write-Error "failed to Install Remote Desktop Client"
+        Write-Error "Failed to Install $AppName, please check the transcript file ($TranscriptFile) for further details."
     }
 }
 
-function Uninstall-GitForWindows {
+function Uninstall-Application {
     try {
-        $UninstallArgs = "/VERYSILENT /NORESTART"
-        "Uninstalling Git for Windows"
-
-        IF (Get-ChildItem -Path $UninstallKey | Get-ItemProperty | Where-Object {$_.DisplayName -like "*Git version*"} -ErrorAction SilentlyContinue) {
-            "Uninstall 64-Bit Git for Windows"
-            $UninstallExe = (Get-ChildItem -Path $UninstallKey | Get-ItemProperty | Where-Object {$_.DisplayName -like "*Git version*"}).UninstallString
+               
+        IF (Get-ChildItem -Path $UninstallKey | Get-ItemProperty | Where-Object {$_.DisplayName -like "*$DetectionString*"} -ErrorAction SilentlyContinue) {
+            "Uninstalling $AppName"
+            $UninstallExe = (Get-ChildItem -Path $UninstallKey | Get-ItemProperty | Where-Object {$_.DisplayName -like "*$DetectionString*"}).UninstallString
             Start-Process $UninstallExe -ArgumentList $UninstallArgs -Wait
         }      
         
-        IF (Get-ChildItem -Path $UninstallKeyWow6432Node | Get-ItemProperty | Where-Object {$_.DisplayName -like "*Git version*"} -ErrorAction SilentlyContinue) {
-            "Uninstall 32-Bit Git for Windows" 
-            $UninstallExe = (Get-ChildItem -Path $UninstallKeyWow6432Node | Get-ItemProperty | Where-Object {$_.DisplayName -like "*Git version*"}).UninstallString
+        IF (Get-ChildItem -Path $UninstallKeyWow6432Node | Get-ItemProperty | Where-Object {$_.DisplayName -like "*$DetectionString*"} -ErrorAction SilentlyContinue) {
+            "Uninstalling $AppName" 
+            $UninstallExe = (Get-ChildItem -Path $UninstallKeyWow6432Node | Get-ItemProperty | Where-Object {$_.DisplayName -like "*$DetectionString*"}).UninstallString
             Start-Process $UninstallExe -ArgumentList $UninstallArgs -Wait
         } 
 
     } catch {
-        Write-Error "failed to Uninstall Git for Windows"
+        Write-Error "failed to Uninstall $AppName"
     }
 }
 
-#If the latest version of the Remote Desktop application is not detected, Install it.
-IF(!([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator"))
-{
-    $DownloadPath = "C:\Windows\Temp\GitInstaller\"
+
+##############################################################################
+##################### Get the Information from the API #######################
+##############################################################################
+[String]$GitHubURI = "https://api.github.com/repos/git-for-windows/git/releases/latest"
+IF ($GITPAC) {
+    $RestResult = Invoke-RestMethod -Method GET -Uri $GitHubURI -ContentType "application/json" -Headers @{Authorization = "token $GITPAC"}
 } ELSE {
-    $DownloadPath = "$env:Temp\GitInstaller\"
+    $RestResult = Invoke-RestMethod -Method GET -Uri $GitHubURI -ContentType "application/json"
 }
 
-$Global:UninstallKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\"
-$Global:UninstallKeyWow6432Node = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\"
-$global:LatestVersion = Get-LatestVersion
-$global:DownloadLink = Get-DownloadLink
-$global:EXEName = "Git-$LatestVersion-$Arch.exe"
+##############################################################################
+########################## Set Required Variables ############################
+##############################################################################
+$LatestVersion = $RestResult.name.split()[-1]
+$EXEName = "Git-$LatestVersion-$Arch.exe"
+$DownloadLink = ($RestResult.assets | Where-Object {$_.Name -Match $EXEName}).browser_download_url
 
+##############################################################################
+########################## Install/Uninstall Params ##########################
+##############################################################################
+$UninstallKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\"
+$UninstallKeyWow6432Node = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\"
+$DetectionString = "Git version"
+$UninstallArgs = "/VERYSILENT /NORESTART"
+$InstallArgs = "/SP- /VERYSILENT /SUPPRESSMSGBOXES /NORESTART"
+$AppName = "Git For Windows"
+
+
+##############################################################################
+############################# Do the Business ################################
+##############################################################################
 switch ($ExecutionType) {
     Detect { 
-        Detect-GitForWindows 
+        Detect-Application 
     }
     Uninstall {
         try {
-                Unstall-GitForWindows -ErrorAction Stop
+                Uninstall-Application -ErrorAction Stop
                 "Uninstallation Complete"
         } 
         catch {
-                Write-Error "Failed to Install Git for Windows"
+                Write-Error "Failed to Install $AppName"
         }
     }
     Default {
-        IF (!(Detect-GitForWindows)) {
+        IF (!(Detect-Application)) {
             try {
                 "The latest version is not installed, Attempting install"
-                Install-GitForWindows -ErrorAction Stop
+                Install-Application -ErrorAction Stop
                 "Installation Complete"
             } catch {
-                Write-Error "Failed to Install Git for Windows"
+                Write-Error "Failed to Install $AppName"
             }
         } ELSE {
             "The Latest Version is already installed"
         }
     }
 }
+
+Stop-Transcript

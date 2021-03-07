@@ -1,18 +1,46 @@
 <#
-    Author: David Brook
-    Date: 03/02/01
+.SYNOPSIS
+  This is a script to Dynamically Detect, Install and Uninstall the Microsoft Remote Desktop Client for Windows.
+  
+  https://docs.microsoft.com/en-us/windows-server/remote/remote-desktop-services/clients/windowsdesktop
 
-    Purpose: Install and/or detect the Remote Desktop application install
+.DESCRIPTION
+  Use this script to detect, install or uninstall the Microsoft Remote Desktop client for Windows
+
+.PARAMETER Arch
+    Select the architecture you would like to install, select from the following
+    - 64-bit (Default)
+    - 32-bit
+    - ARM64
+
+.PARAMETER ExecutionType
+    Select the Execution type, this determines if you will be detecting, installing uninstalling the application.
+    
+    The options are as follows;
+    - Install (Default)
+    - Detect
+    - Uninstall
+
+.Parameter DownloadPath
+    The location you would like the downloaded installer to go. 
+
+    Default: $env:TEMP\RDInstaller
+
+.NOTES
+  Version:        1.2
+  Author:         David Brook
+  Creation Date:  21/02/2021
+  Purpose/Change: Initial script development
+  
 #>
 
 param (
     [ValidateSet('64-bit','32-bit','ARM64')]
     [String]$Arch = '64-bit',
     [ValidateSet('Install','Uninstall',"Detect")]
-    [string]$ExecutionType
+    [string]$ExecutionType,
+    [string]$DownloadPath = "$env:Temp\RDInstaller\"
 )
-
-#Check if the logged in user is an admin or not, then set the Download path Accordingly 
 
 function Get-LatestVersion {
     [String]$URL = "https://docs.microsoft.com/en-us/windows-server/remote/remote-desktop-services/clients/windowsdesktop-whatsnew"
@@ -67,13 +95,13 @@ function Get-DownloadLink {
 
     ($HTML.links | Where-Object {$_.InnerHTMl -Like "*$Arch*"}).href        
 }
-function Detect-RemoteDesktop {
-    IF (((Get-ChildItem -Path $UninstallKey | Get-ItemProperty | Where-Object {$_.DisplayName -like "*Remote Desktop*"}).DisplayVersion -Match $LatestVersion) -or ((Get-ChildItem -Path $UninstallKeyWow6432Node | Get-ItemProperty | Where-Object {$_.DisplayName -like "*Remote Desktop*"}).DisplayVersion -Match $LatestVersion))
+function Detect-Application {
+    IF (((Get-ChildItem -Path $UninstallKey | Get-ItemProperty | Where-Object {$_.DisplayName -like "*$AppName*"}).DisplayVersion -Match $LatestVersion) -or ((Get-ChildItem -Path $UninstallKeyWow6432Node | Get-ItemProperty | Where-Object {$_.DisplayName -like "*$AppName*"}).DisplayVersion -Match $LatestVersion))
     {
         $True
     }
 }
-function Install-RemoteDesktop {
+function Install-Application {
     IF (!(Test-Path $DownloadPath)) {
         try {
             Write-Verbose "$DownloadPath Does not exist, Creating the folder"
@@ -85,81 +113,75 @@ function Install-RemoteDesktop {
     
     try {
         Write-Verbose "Attempting client download"
-        Invoke-WebRequest -Usebasicparsing -URI $DownloadLink -Outfile "$DownloadPath\RemoteDesktop-$Arch.msi" -ErrorAction Stop
+        Invoke-WebRequest -Usebasicparsing -URI $DownloadLink -Outfile "$DownloadPath\$InstallerName" -ErrorAction Stop
     }
     catch {
-        Write-Error "Failed to download RDInstaller"
+        Write-Error "Failed to download $AppName"
     }
     
     try {
-        "Installing Remote Desktop Client v$($LatestVersion)"
-        Start-Process "MSIEXEC.exe" -ArgumentList "/I ""$DownloadPath\RemoteDesktop-$Arch.msi"" /qn /norestart /l* ""$DownloadPath\RDINSTALL$(get-Date -format yyyy-MM-dd).log""" -Wait
+        "Installing $AppName v$($LatestVersion)"
+        Start-Process "MSIEXEC.exe" -ArgumentList "/I ""$DownloadPath\$InstallerName"" /qn /norestart /l* ""$DownloadPath\RDINSTALL$(get-Date -format yyyy-MM-dd).log""" -Wait
     }
     catch {
-        Write-Error "failed to Install Remote Desktop Client"
+        Write-Error "failed to Install $AppName"
     }
 }
 
-function Uninstall-RemoteDesktop {
+function Uninstall-Application {
     try {
-        "Uninstalling Remote Desktop Client"
+        "Uninstalling $AppName"
 
-        IF (Get-ChildItem -Path $UninstallKey | Get-ItemProperty | Where-Object {$_.DisplayName -like "*Remote Desktop*"} -ErrorAction SilentlyContinue) {
-            "Uninstall 64-Bit Remote Desktop Client"
-            $UninstallGUID = (Get-ChildItem -Path $UninstallKey | Get-ItemProperty | Where-Object {$_.DisplayName -like "*Remote Desktop*"}).PSChildName
+        IF (Get-ChildItem -Path $UninstallKey | Get-ItemProperty | Where-Object {$_.DisplayName -like "*$AppName*"} -ErrorAction SilentlyContinue) {
+            "Uninstalling $AppName"
+            $UninstallGUID = (Get-ChildItem -Path $UninstallKey | Get-ItemProperty | Where-Object {$_.DisplayName -like "*$AppName*"}).PSChildName
             $UninstallArgs = "/X " + $UninstallGUID + " /qn"
             Start-Process "MSIEXEC.EXE" -ArgumentList $UninstallArgs -Wait
         }      
         
-        IF (Get-ChildItem -Path $UninstallKeyWow6432Node | Get-ItemProperty | Where-Object {$_.DisplayName -like "*Remote Desktop*"} -ErrorAction SilentlyContinue) {
-            "Uninstall 32-Bit Remote Desktop Client" 
-            $UninstallGUID = (Get-ChildItem -Path $UninstallKeyWow6432Node | Get-ItemProperty | Where-Object {$_.DisplayName -like "*Remote Desktop*"}).UninstallString
+        IF (Get-ChildItem -Path $UninstallKeyWow6432Node | Get-ItemProperty | Where-Object {$_.DisplayName -like "*$AppName*"} -ErrorAction SilentlyContinue) {
+            "Uninstalling $AppName" 
+            $UninstallGUID = (Get-ChildItem -Path $UninstallKeyWow6432Node | Get-ItemProperty | Where-Object {$_.DisplayName -like "*$AppName*"}).UninstallString
             $UninstallArgs = "/X " + $UninstallGUID + " /qn"
             Start-Process "MSIEXEC.EXE" -ArgumentList $UninstallArgs -Wait
         } 
 
     } catch {
-        Write-Error "failed to Uninstall Remote Desktop Client"
+        Write-Error "failed to Uninstall $AppName"
     }
 }
 
-#If the latest version of the Remote Desktop application is not detected, Install it.
-IF(!([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator"))
-{
-    $DownloadPath = "C:\Windows\Temp\RDInstaller\"
-} ELSE {
-    $DownloadPath = "$env:Temp\RDInstaller\"
-}
-
-$Global:UninstallKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\"
-$Global:UninstallKeyWow6432Node = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\"
-$global:LatestVersion = ((Get-LatestVersion | Get-Unique | Sort-Object $_.LatestVersion)[0]).LatestVersion
+$UninstallKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\"
+$UninstallKeyWow6432Node = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\"
+$LatestVersion = ((Get-LatestVersion | Get-Unique | Sort-Object $_.LatestVersion)[0]).LatestVersion
+$InstallerName = "RemoteDesktop-$LatestVersion-$Arch.msi"
+$AppName = "Remote Desktop"
 $DownloadLink = Get-DownloadLink
 
 switch ($ExecutionType) {
     Detect { 
-        Detect-RemoteDesktop 
+        Detect-Application 
     }
     Uninstall {
         try {
-                Uninstall-RemoteDesktop -ErrorAction Stop
+                Uninstall-Application -ErrorAction Stop
                 "Uninstallation Complete"
         } 
         catch {
-            Write-Error "Failed to Install Remote Desktop Client"
+            Write-Error "Failed to Install $AppName"
         }
     }
     Default {
-        IF (!(Detect-RemoteDesktop)) {
+        IF (!(Detect-Application)) {
             try {
                 "The latest version is not installed, Attempting install"
-                Install-RemoteDesktop -ErrorAction Stop
+                Install-Application -ErrorAction Stop
                 "Installation Complete"
             } catch {
-                Write-Error "Failed to Install Remote Desktop Client"
+                Write-Error "Failed to Install $AppName"
             }
         } ELSE {
-            "The Latest Version is already installed"
+            "The Latest Version ($LatestVersion) of $AppName is already installed"
         }
     }
 }
