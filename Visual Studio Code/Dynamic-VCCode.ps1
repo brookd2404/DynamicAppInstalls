@@ -16,7 +16,9 @@ param (
 )
 
 $TranscriptFile = "$env:SystemRoot\Logs\Software\VSCode_Dynamic_Install.Log"
-Start-Transcript -Path $TranscriptFile
+IF (-Not ($ExecutionType -Match "Detect")) {
+    Start-Transcript -Path $TranscriptFile
+}
 
 ### Set the AppArchitecture Variable based on the Architecture passed in via the command line or header
 switch ($Architecture) {
@@ -108,8 +110,8 @@ $DownloadLink = $RestResult.url
 ########################## Install/Uninstall Params ##########################
 ##############################################################################
 $InstallerName = "VSCode" + $AppArchitecture + $LatestVersion + ".exe"
-$InstallArguments = "/verysilent /mergetasks='!runcode,addcontextmenufiles,addcontextmenufolders,associatewithfiles,addtopath'"
-$UninstallArguments = "/Silent"
+$InstallArguments = "/verysilent /mergetasks=!runcode,addcontextmenufiles,addcontextmenufolders,associatewithfiles,addtopath"
+$UninstallArguments = "/VerySilent"
 $UninstallKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\"
 $UninstallKeyWow6432Node = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\"
 $AppName = "Microsoft Visual Studio Code"
@@ -144,4 +146,6 @@ switch ($ExecutionType) {
     }
 }
 
-Stop-Transcript
+IF (-Not ($ExecutionType -Match "Detect")) {
+    Stop-Transcript
+}

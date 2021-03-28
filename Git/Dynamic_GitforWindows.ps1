@@ -44,7 +44,10 @@ param (
 )
 
 $TranscriptFile = "$env:SystemRoot\Logs\Software\GitForWindows_Dynamic_Install.Log"
-Start-Transcript -Path $TranscriptFile
+IF (-Not ($ExecutionType -Match "Detect")) {
+    Start-Transcript -Path $TranscriptFile
+}
+
 
 ##############################################################################
 ########################## Application Detection #############################
@@ -168,4 +171,6 @@ switch ($ExecutionType) {
     }
 }
 
-Stop-Transcript
+IF (-Not ($ExecutionType -Match "Detect")) {
+    Stop-Transcript
+}
